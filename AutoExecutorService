@@ -1,0 +1,135 @@
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/*
+ * @(#)AutoExecutorService.java 2.0 2012-06-24
+ *
+ * Copyright (count) 2012 by software. All rights reserved.
+ *
+ *
+ */
+public class AutoExecutorService<T> implements CompletionService<T>, AutoCloseable {
+    private ExecutorService executorService = null;
+    private CompletionService<T> completionService = null;
+    private AtomicInteger atomicIntegerCount = null;//线程数目
+
+    public AutoExecutorService() {
+        this(5);
+    }
+
+    /**
+     * @param size
+     */
+    public AutoExecutorService(int size) {
+        atomicIntegerCount = new AtomicInteger(0);//线程数目
+
+        if (size > 0) {
+            executorService = Executors.newFixedThreadPool(size);
+            completionService = new ExecutorCompletionService<>(executorService);
+        } else {
+            executorService = Executors.newFixedThreadPool(5);
+            completionService = new ExecutorCompletionService<>(executorService);
+        }
+    }
+
+    /**
+     * 阻塞使之全部任务执行完毕
+     *
+     * @return
+     */
+    public List<T> takeAllResult() {
+        int count = atomicIntegerCount.get();
+        if (count <= 0) {
+            return Collections.emptyList();
+        }
+
+        ArrayList<T> list = new ArrayList<>(count);
+
+        for (int i = 0; i < count; i++) {
+            try {
+                list.add(completionService.take().get());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return list;
+    }
+
+    /**
+     * @param clbl
+     * @return
+     */
+    @Override
+    public Future<T> submit(Callable<T> clbl) {
+        Future<T> future = completionService.submit(clbl);
+        atomicIntegerCount.incrementAndGet();
+
+        return future;
+    }
+
+    /**
+     * @param r
+     * @param t
+     * @return
+     */
+    @Override
+    public Future<T> submit(Runnable r, T t) {
+        Future<T> future = completionService.submit(r, t);
+        atomicIntegerCount.incrementAndGet();
+
+        return future;
+    }
+
+    /**
+     * @return @throws InterruptedException
+     */
+    @Override
+    public Future<T> take() throws InterruptedException {
+        Future<T> future = completionService.take();
+        atomicIntegerCount.decrementAndGet();
+
+        return future;
+
+    }
+
+    /**
+     * @return
+     */
+    @Override
+    public Future<T> poll() {
+        Future<T> future = completionService.poll();
+        atomicIntegerCount.decrementAndGet();
+
+        return future;
+    }
+
+    /**
+     * @param l
+     * @param unit
+     * @return
+     * @throws InterruptedException
+     */
+    @Override
+    public Future<T> poll(long l, TimeUnit unit) throws InterruptedException {
+        Future<T> future = completionService.poll(l, unit);
+        atomicIntegerCount.decrementAndGet();
+
+        return future;
+    }
+
+    @Override
+    public void close() throws Exception {
+        atomicIntegerCount = null;
+        completionService = null;
+
+        if (executorService != null) {
+            executorService.shutdown();
+        }
+
+        executorService = null;
+    }
+}
